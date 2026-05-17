@@ -20,6 +20,7 @@ import {
 } from '../constants';
 import { badFavIconCache } from '../caches';
 import { configureSvg } from '../assets';
+import { formatLastAccessedLabel, formatLastAccessedTooltip } from './time.js';
 
 const changeHeadTabListNodeSelectedStyle = method => () => {
   tabList.firstElementChild.classList[method](SELECTED_TAB_CLASSNAME);
@@ -210,6 +211,23 @@ function createTabObject({
     titleNode.style = `font-size: ${tabTitleSize}px`;
   }
 
+  const titleRowNode = d.createElement('div');
+  titleRowNode.classList.add('tab-title-row');
+  titleRowNode.appendChild(titleNode);
+
+  const lastAccessedLabel = formatLastAccessedLabel(lastAccessed);
+  if (lastAccessedLabel) {
+    const lastAccessedNode = d.createElement('span');
+    lastAccessedNode.classList.add('tab-last-accessed');
+    lastAccessedNode.appendChild(d.createTextNode(lastAccessedLabel));
+    const lastAccessedTooltip = formatLastAccessedTooltip(lastAccessed);
+    if (lastAccessedTooltip) {
+      lastAccessedNode.setAttribute('title', lastAccessedTooltip);
+      lastAccessedNode.setAttribute('aria-label', lastAccessedTooltip);
+    }
+    titleRowNode.appendChild(lastAccessedNode);
+  }
+
   //      <p>${url}</p>
   // INLINE tabUrlSize HERE
   const urlNode = d.createElement('p');
@@ -220,7 +238,7 @@ function createTabObject({
   }
 
   // Append all block elements
-  tabInfoNode.appendChild(titleNode);
+  tabInfoNode.appendChild(titleRowNode);
   // Don't show the url if user specifies 0 as the url font size
   if (tabUrlSize > 0) {
     tabInfoNode.appendChild(urlNode);

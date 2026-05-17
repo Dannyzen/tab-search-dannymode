@@ -399,11 +399,34 @@ removes the extra space added by the pseudoelement
   min-width: 0;
 }
 
+.tab-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .tab-title {
   line-height: 1.2;
   margin-bottom: 0.25em;
   font-size: 1.1em;
   font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-last-accessed {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.tab-object--selected .tab-last-accessed,
+.tab-object:hover .tab-last-accessed,
+.tab-object:focus .tab-last-accessed {
+  color: var(--color-text-inverted);
 }
 
 .wordbreak-all {

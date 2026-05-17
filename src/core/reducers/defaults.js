@@ -33,7 +33,7 @@ export const initialGeneralSettings = {
   recentlyClosedLimit: 5,
   useFallbackFont: false,
   showLastQueryOnPopup: false,
-  shouldSortByMostRecentlyUsedOnPopup: false,
+  shouldSortByMostRecentlyUsedOnPopup: true,
   shouldSortByMostRecentlyUsedAll: false,
   tabUrlSize: 11,
   tabTitleSize: 13,
