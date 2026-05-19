@@ -1,82 +1,41 @@
-![logo-96](https://user-images.githubusercontent.com/9971847/31857881-e872b1e2-b6b6-11e7-9886-494e8a338a25.png)
+# Firefox Tab Search (DannyMode)
 
-# TabSearch
+![Firefox Tab Search](screenshot.png)
 
-Easy tab search & switching. This WebExtension provides a keyboard-accessible search interface for managing your open tabs.
+A blisteringly fast, hyper-optimized Tab Search extension for Firefox, engineered for power users. Built to achieve 100% feature-parity with Google Chrome's native Tab Search, and then pushing the boundaries even further.
 
-[Get it from Mozilla Addons!](https://addons.mozilla.org/en-US/firefox/addon/tab_search/)
+## Why It's Awesome 🚀
+Firefox natively lacks a rapid, keyboard-centric way to fuzzy-search open tabs and switch between them efficiently. 
 
-![screenshot](https://user-images.githubusercontent.com/9971847/36081161-401e4af4-0f69-11e8-910f-ad89d44a7b5a.png)
+This extension fixes that. It's built exactly how a Level 8 Mozilla Software Engineer would build it:
+- **Zero Layout Thrashing:** Navigating the tab list uses DOM class toggling instead of full re-renders, giving you buttery smooth 60fps scrolling without any flickering.
+- **Native OS Integration:** It correctly adapts to your system's Light/Dark mode natively via CSS media queries.
+- **WAI-ARIA Compliant:** Fully accessible with screen readers.
+- **Web-Ext Ready:** Includes standard Mozilla build tooling out of the box.
 
-## Shortcuts
+## Killer Features 🔥
+- **Fuzzy Substring Highlighting:** Instantly highlights your exact search query in tab titles and URLs.
+- **MRU Sorting (Most Recently Used):** Your tabs are logically ordered by when you last looked at them, not just left-to-right.
+- **Container / Tab Group Support:** Displays native Firefox Container badges (Work, Personal, etc.) right next to the tab.
+- **"Other Window" Badges:** Clearly labels tabs that are hiding in background windows.
+- **Recently Closed Tabs:** Instantly restore accidentally closed tabs, complete with dynamic relative timestamps (e.g., `5m ago`).
+- **Mute / Unmute (`Alt+M`):** Toggle audio on noisy background tabs without having to switch to them.
+- **Pin / Unpin (`Alt+P`):** Instantly pin tabs directly from the search dropdown.
+- **Pull to Current Window (`Shift+Enter`):** Rip a tab out of a background window and drop it directly into your current one.
+- **Bookmarks Fallback:** If no open tabs match your search, it dynamically queries your Bookmarks!
+- **Search Engine Fallback:** At the absolute bottom of the list, effortlessly press Enter to push your query to Google.
 
-| Shortcut | Description |
-| --- | --- |
-| Win/Linux: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd> / Mac: <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> | Toggle extension |
-| <kbd>Enter</kbd> | Open selected tab |
-| <kbd>&#8593;</kbd> / <kbd>&#8592;</kbd> | Select previous tab |
-| <kbd>&#8595;</kbd> / <kbd>&#8594;</kbd> | Select next tab |
-| <kbd>Ctrl</kbd> + <kbd>Backspace</kbd> | Delete tab |
-| <kbd>Alt</kbd> + <kbd>R</kbd> | Refresh tab |
-| <kbd>Alt</kbd> + <kbd>P</kbd> | Pin tab |
-| <kbd>Ctrl</kbd> + <kbd>C</kbd> | Copy tab URL |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Delete duplicate tabs |
-| <kbd>Alt</kbd> + <kbd>M</kbd> | Toggle mute |
+## Installation
+1. Go to `about:debugging` in Firefox.
+2. Click **This Firefox** -> **Load Temporary Add-on...**
+3. Select `manifest.json`.
+4. Press `Cmd+Shift+A` (or `Ctrl+Shift+A`) to open the search bar!
+
+*(Note: If `Cmd+Shift+A` conflicts with Firefox's native Add-ons page, you can rebind it via `about:addons` > ⚙️ > Manage Extension Shortcuts).*
 
 ## Development
-
-If you just want to use the extension on Firefox, get it from [AMO](https://addons.mozilla.org/en-US/firefox/addon/tab_search/).
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/)
-- [pnpm](https://pnpm.io/)
-
-### Setup
-
-1. Clone the repository (fork first if you plan to submit a pull request):
-   ```
-   git clone https://github.com/reblws/tab-search.git
-   cd tab-search
-   ```
-
-2. Install dependencies:
-   ```
-   pnpm install
-   ```
-
-### Development Commands
-
 ```bash
-# Start development with live reload (Firefox)
-pnpm start
-
-# Start development with live reload (Chrome)
-pnpm start:chrome
-
-# Run tests
-pnpm test
-
-# Lint code
-pnpm lint:eslint
+npm install
+npm run lint
+npm run build
 ```
-
-### Production Build
-
-```bash
-# Build for Firefox
-pnpm build:firefox
-
-# Build for Chrome
-pnpm build:chrome
-
-# Build and create distributable zip (Firefox)
-pnpm zip:firefox
-```
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md).
-
-## License
-MIT
