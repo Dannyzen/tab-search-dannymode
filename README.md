@@ -41,6 +41,19 @@ Inside the popup:
 
 You can rebind the launch shortcut anytime in **`about:addons` → gear → Manage Extension Shortcuts**.
 
+## Getting the true Chrome ⌘⇧A behavior
+
+Chrome's native tab search is bound to <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> (macOS) / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>. In Firefox that exact combo is **reserved** by the browser for the Add-ons Manager, so by default you can't assign it to an extension — Manage Extension Shortcuts will reject it. To make FuzzyTabs behave like Chrome and open on that shortcut, you first have to free it up.
+
+Firefox **147+** ships a built-in page for this: **`about:keyboard`** (it's labelled *experimental*).
+
+1. Open **`about:keyboard`**.
+2. In **Search**, type `extensions` to find the **Extensions and Themes** shortcut (that's the one holding ⌘⇧A / Ctrl+Shift+A).
+3. Click **Change** and set it to something else, or clear it — either way ⌘⇧A is now free. (**Reset** on that row, or **Reset all shortcuts to defaults** at the bottom, puts it back.)
+4. Now assign ⌘⇧A to FuzzyTabs in `about:addons` → gear → **Manage Extension Shortcuts** → *Open FuzzyTabs*. It'll be accepted now that the built-in no longer reserves it.
+
+That's it — ⌘⇧A now opens FuzzyTabs, mirroring Chrome's tab search. This lives in your profile, so it survives Firefox updates (no app-bundle hacks required).
+
 ## Installing (development)
 
 FuzzyTabs is plain, unbundled JavaScript — there's no build step.
