@@ -1,0 +1,501 @@
+(function() {
+  const DEBUG = false;
+  const log = (...args) => { if (!DEBUG) return; try { console.debug('[FuzzyTabs][content]', ...args); } catch (_) {} };
+  log('content script loaded', { url: location.href });
+
+  // State for results navigation
+  const STATE = { allTabs: [], allBookmarks: [], mode: 'tabs', tabs: [], focusedIndex: -1, query: '', allowMouseFocus: false };
+
+  function getUIElements() {
+    const input = document.getElementById("fuzzy-tabs-input");
+    const ul = document.querySelector('.fsl-results');
+    const modeIcon = document.getElementById("fsl-mode-icon");
+    return { input, ul, modeIcon };
+  }
+
+  const ICON_TAB = `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M1 3.5A1.5 1.5 0 012.5 2h11A1.5 1.5 0 0115 3.5v9a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9zM2.5 3a.5.5 0 00-.5.5V11h12V3.5a.5.5 0 00-.5-.5h-11z"/></svg>`;
+  const ICON_STAR = `<svg viewBox="0 0 16 16" width="16" height="16"><path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/></svg>`;
+
+  function updateModeUI() {
+    const { input, modeIcon } = getUIElements();
+    if (input) {
+      input.placeholder = STATE.mode === 'tabs' ? 'Search tabs...' : 'Search bookmarks...';
+      setTimeout(() => input.focus(), 50);
+    }
+    if (modeIcon) {
+      modeIcon.innerHTML = STATE.mode === 'tabs' ? ICON_TAB : ICON_STAR;
+      modeIcon.title = STATE.mode === 'tabs' ? 'Tab mode' : 'Bookmark mode';
+    }
+  }
+
+  function toggleMode() {
+    STATE.mode = STATE.mode === 'tabs' ? 'bookmarks' : 'tabs';
+    updateModeUI();
+    if (STATE.mode === 'tabs') {
+      fetchAllTabsAndRender();
+    } else {
+      fetchAllBookmarksAndRender();
+    }
+  }
+
+  function fetchAllBookmarksAndRender() {
+    try {
+      const api = (typeof browser !== 'undefined') ? browser : chrome;
+      api.runtime.sendMessage({ type: 'get-all-bookmarks' }, (resp) => {
+        try {
+          if (resp && resp.ok && Array.isArray(resp.bookmarks)) {
+            log('received bookmarks list', { count: resp.bookmarks.length });
+            STATE.allBookmarks = resp.bookmarks.slice();
+            computeResultsAndRender();
+          } else {
+            log('unexpected response for get-all-bookmarks', resp);
+            STATE.allBookmarks = [];
+            computeResultsAndRender();
+          }
+        } catch (e) {
+          log('error handling bookmarks response', e);
+        }
+      });
+    } catch (e) {
+      log('failed to request get-all-bookmarks', e);
+    }
+  }
+
+  function setFocusedIndex(newIndex) {
+    const { ul } = getUIElements();
+    const items = ul ? Array.from(ul.querySelectorAll('li')) : [];
+    if (!items.length) { STATE.focusedIndex = -1; return; }
+    const max = items.length - 1;
+    newIndex = Math.max(0, Math.min(max, newIndex));
+    // Remove previous
+    if (STATE.focusedIndex >= 0 && items[STATE.focusedIndex]) {
+      items[STATE.focusedIndex].classList.remove('focused');
+    }
+    // Add to new
+    STATE.focusedIndex = newIndex;
+    const li = items[newIndex];
+    if (li) {
+      li.classList.add('focused');
+      try { li.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+    }
+  }
+
+  function moveFocus(delta) {
+    const { ul } = getUIElements();
+    const items = ul ? Array.from(ul.querySelectorAll('li')) : [];
+    if (!items.length) return;
+    const next = STATE.focusedIndex < 0 ? 0 : STATE.focusedIndex + delta;
+    setFocusedIndex(next);
+  }
+
+  function activateTabById(tabId) {
+    try {
+      const api = (typeof browser !== 'undefined') ? browser : chrome;
+      api.runtime.sendMessage({ type: 'activate-tab', tabId }, (resp) => {
+        // On success, close window (extension page) or overlay otherwise
+        if (resp && resp.ok) {
+          closeExtensionWindow();
+        }
+      });
+    } catch (_) {}
+  }
+
+  function openBookmark(url) {
+    try {
+      const api = (typeof browser !== 'undefined') ? browser : chrome;
+      api.runtime.sendMessage({ type: 'open-bookmark', url }, (resp) => {
+        if (resp && resp.ok) {
+          closeExtensionWindow();
+        }
+      });
+    } catch (_) {}
+  }
+
+  function buildHighlightedSpan(text, ranges) {
+    const span = document.createElement('span');
+    let pos = 0;
+    for (const [a, b] of ranges) {
+      if (a > pos) span.appendChild(document.createTextNode(text.slice(pos, a)));
+      const mark = document.createElement('span');
+      mark.className = 'fsl-hl';
+      mark.textContent = text.slice(a, b + 1);
+      span.appendChild(mark);
+      pos = b + 1;
+    }
+    if (pos < text.length) span.appendChild(document.createTextNode(text.slice(pos)));
+    return span;
+  }
+
+  function computeResultsAndRender() {
+    const { ul, input } = getUIElements();
+    if (!ul) return;
+    const q = (input && input.value || '').trim();
+    STATE.query = q;
+
+    const sourceData = STATE.mode === 'tabs' ? STATE.allTabs : STATE.allBookmarks;
+
+    if (!q) {
+        // No query: show all items
+        let sortedItems;
+        if (STATE.mode === 'tabs') {
+            sortedItems = sourceData
+                .slice()
+                .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))
+                .map(t => ({item: t}));
+        } else {
+            sortedItems = sourceData.map(b => ({item: b}));
+        }
+        renderItems(sortedItems);
+        return;
+    }
+
+    const fuzzySearch = window.Microfuzz.createFuzzySearch(sourceData, {
+        getText: (item) => [item.title, item.url]
+    })
+    const fuzzySearchResults = fuzzySearch(q)
+    renderItems(fuzzySearchResults);
+  }
+
+  function renderItems(items) {
+    try {
+      const { ul } = getUIElements();
+      if (!ul) return;
+      ul.innerHTML = '';
+
+      STATE.tabs = items.map(n => n.item);
+      STATE.focusedIndex = -1;
+
+      if (!items.length) {
+        const li = document.createElement('li');
+        li.textContent = STATE.query ? 'No results' : (STATE.mode === 'tabs' ? 'No tabs available' : 'No bookmarks available');
+        li.style.color = 'rgba(255,255,255,0.6)';
+        ul.appendChild(li);
+        return;
+      }
+
+      for (let i = 0; i < items.length; i++) {
+        const { item: t, matches } = items[i];
+        const li = document.createElement('li');
+        if (STATE.mode === 'tabs') {
+          li.setAttribute('data-tab-id', String(t.id));
+        } else {
+          li.setAttribute('data-url', t.url);
+        }
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
+
+        // small arrow indicator (hidden unless focused)
+        const arrow = document.createElement('span');
+        arrow.className = 'fsl-arrow';
+        arrow.textContent = '▸';
+
+        // favicon
+        const img = document.createElement('img');
+        img.className = 'fsl-fav';
+        img.alt = '';
+        img.decoding = 'async';
+
+        // Helper: check if favicon URL is safe to load in a content page
+        const isSafeFaviconUrl = (url) => {
+          if (!url || typeof url !== 'string') return false;
+          // Block chrome://, about://, resource:// and similar internal schemes
+          if (/^(chrome|about|resource|moz-icon):/i.test(url)) return false;
+          // Allow http(s) and data URIs; also allow extension's own moz-extension URLs
+          if (/^(https?:|data:|moz-extension:)/i.test(url)) return true;
+          return false;
+        };
+        const getDefaultIconUrl = () => {
+          try {
+            const api = (typeof browser !== 'undefined') ? browser : chrome;
+            if (api && api.runtime && typeof api.runtime.getURL === 'function') {
+              return api.runtime.getURL('icons/ic_search.svg');
+            }
+          } catch (_) {}
+          return null;
+        };
+
+        // Prefer tabs API favicon; fallback to origin favicon.ico if available
+        let favicon = t.favIconUrl;
+        try {
+          if (!favicon && t.url) {
+            const u = new URL(t.url);
+            if (u.origin && u.origin !== 'null' && /^https?:$/i.test(u.protocol)) {
+              favicon = u.origin + '/favicon.ico';
+            }
+          }
+        } catch (_) {}
+        // If favicon is unsafe (e.g., chrome://mozapps/.../extension.svg), use default icon
+        if (!isSafeFaviconUrl(favicon)) {
+          favicon = getDefaultIconUrl();
+        }
+        if (favicon) img.src = favicon;
+        img.style.visibility = 'hidden';
+        img.addEventListener('load', () => { img.style.visibility = 'visible'; });
+
+        // title and url with highlight
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'fsl-title';
+        const titleText = (t.title && t.title.trim()) ? t.title : (t.url || 'Untitled');
+        if (STATE.query && matches && matches[0]) {
+          const titleMatches = matches[0]
+          titleSpan.appendChild(buildHighlightedSpan(titleText, titleMatches));
+        } else {
+          titleSpan.textContent = titleText;
+        }
+
+        const urlSpan = document.createElement('span');
+        urlSpan.className = 'fsl-url';
+        const urlText = t.url || '';
+        if (STATE.query && matches && matches[1]) {
+          const urlMatches = matches[1]
+          urlSpan.appendChild(buildHighlightedSpan(urlText, urlMatches));
+        } else {
+          urlSpan.textContent = urlText;
+        }
+
+        li.appendChild(arrow);
+        li.appendChild(img);
+        li.appendChild(titleSpan);
+        li.appendChild(urlSpan);
+
+        if (STATE.mode === 'tabs') {
+          // close (cross) button on the right
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'fsl-close';
+          closeBtn.type = 'button';
+          // SVG cross icon
+          // Ensure the cross is visible by explicitly disabling fill and using rounded joins
+          closeBtn.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3 L9 9 M9 3 L3 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
+          // Tooltip with platform-specific hotkey
+          const isMac = navigator.platform && /Mac/i.test(navigator.platform);
+          closeBtn.title = isMac ? 'Ctrl+W' : 'Alt+W';
+          // Prevent list item activation and focus changes on clicking cross
+          const handleClose = (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const tabId = t.id;
+            if (typeof tabId !== 'number') return;
+            try {
+              const api = (typeof browser !== 'undefined') ? browser : chrome;
+              api.runtime.sendMessage({ type: 'close-tab', tabId }, () => {
+                try {
+                  // Remove li and update state similarly to keyboard path
+                  const currentUl = ul;
+                  li.remove();
+                  const remaining = Array.from(currentUl.querySelectorAll('li'));
+                  STATE.tabs = STATE.tabs.filter(tt => tt.id !== tabId);
+                  STATE.allTabs = STATE.allTabs.filter(tt => tt.id !== tabId);
+                  if (remaining.length > 0) {
+                    const idx = Math.min(STATE.focusedIndex, remaining.length - 1);
+                    STATE.focusedIndex = -1;
+                    setFocusedIndex(idx);
+                  } else {
+                    computeResultsAndRender();
+                  }
+                } catch (_) {}
+              });
+            } catch (_) {}
+          };
+          closeBtn.addEventListener('click', handleClose);
+
+          li.appendChild(closeBtn);
+        }
+
+        // interactions: hover moves focus (only when mouse focus is enabled); click/mousedown activates
+        li.addEventListener('mouseenter', () => {
+          if (!STATE.allowMouseFocus) return;
+          const idx = Array.prototype.indexOf.call(ul.children, li);
+          setFocusedIndex(idx);
+        });
+
+        const handleActivate = (ev) => {
+          try {
+            // Only react to primary button and ignore clicks on the close button
+            if (ev.button !== 0) return;
+            if (ev.target && ev.target.closest && ev.target.closest('.fsl-close')) return;
+            ev.preventDefault();
+            if (STATE.mode === 'tabs') {
+              const tabId = t.id;
+              if (tabId != null) activateTabById(tabId);
+            } else {
+              const url = t.url;
+              if (url != null) openBookmark(url);
+            }
+          } catch (_) {}
+        };
+        // Activate early on mousedown to avoid input blur closing the overlay before click fires
+        li.addEventListener('mousedown', handleActivate);
+        // Fallback activation on click (in case mousedown was prevented by the page)
+        li.addEventListener('click', handleActivate);
+
+        ul.appendChild(li);
+      }
+      // initialize focus to the first item
+      setFocusedIndex(0);
+    } catch (e) {
+      log('renderTabsList error', e);
+    }
+  }
+
+  function fetchAllTabsAndRender() {
+    try {
+      const api = (typeof browser !== 'undefined') ? browser : chrome;
+      api.runtime.sendMessage({ type: 'get-all-tabs' }, (resp) => {
+        try {
+          if (resp && resp.ok && Array.isArray(resp.tabs)) {
+            log('received tabs list', { count: resp.tabs.length });
+            STATE.allTabs = resp.tabs.slice();
+            computeResultsAndRender();
+          } else {
+            log('unexpected response for get-all-tabs', resp);
+            STATE.allTabs = [];
+            computeResultsAndRender();
+          }
+        } catch (e) {
+          log('error handling tabs response', e);
+        }
+      });
+    } catch (e) {
+      log('failed to request get-all-tabs', e);
+    }
+  }
+
+  function initApp() {
+    log('initApp');
+    // On open, require a fresh mouse move to enable hover focusing
+    STATE.allowMouseFocus = false;
+    const { input } = getUIElements();
+    if (input) {
+      log('focusing input');
+      input.value = '';
+      input.placeholder = STATE.mode === 'tabs' ? 'Search tabs...' : 'Search bookmarks...';
+      setTimeout(() => input.focus(), 50);
+      input.addEventListener('input', () => computeResultsAndRender());
+    }
+
+    const { modeIcon } = getUIElements();
+    if (modeIcon) {
+      modeIcon.addEventListener('click', () => toggleMode());
+    }
+
+    // Enable mouse-driven focusing after actual mouse movement
+    document.addEventListener('mousemove', () => {
+      STATE.allowMouseFocus = true;
+    }, true);
+
+    // Keyboard handling on the app page
+    document.addEventListener('keydown', (e) => {
+      // Any key press disables mouse-driven focusing until the mouse moves again
+      STATE.allowMouseFocus = false;
+      if (e.key === 'Escape') {
+        log('Escape pressed, closing');
+        e.preventDefault();
+        closeExtensionWindow();
+        return;
+      }
+      if (e.key === 'ArrowDown' || (e.ctrlKey && (e.key === 'n' || e.key === 'N'))) {
+        e.preventDefault();
+        moveFocus(1);
+        return;
+      }
+      if (e.key === 'ArrowUp' || (e.ctrlKey && (e.key === 'p' || e.key === 'P'))) {
+        e.preventDefault();
+        moveFocus(-1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        // Activate the focused item
+        const { ul } = getUIElements();
+        if (!ul) return;
+        const items = Array.from(ul.querySelectorAll('li'));
+        if (STATE.focusedIndex >= 0 && items[STATE.focusedIndex]) {
+          const li = items[STATE.focusedIndex];
+          if (STATE.mode === 'tabs') {
+            const tabId = li && li.getAttribute('data-tab-id');
+            if (tabId) {
+              e.preventDefault();
+              activateTabById(parseInt(tabId, 10));
+            }
+          } else {
+            const url = li && li.getAttribute('data-url');
+            if (url) {
+              e.preventDefault();
+              openBookmark(url);
+            }
+          }
+        }
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        toggleMode();
+        return;
+      }
+      // Ctrl/Cmd+W closes the focused tab from the list (not the browser tab)
+      const isMac = navigator.platform && /Mac/i.test(navigator.platform);
+      if ((e.key === 'w' || e.key === 'W') && (e.ctrlKey && isMac || e.altKey && !isMac)) {
+        if (STATE.mode !== 'tabs') return;
+        const { ul } = getUIElements();
+        if (!ul) return;
+        const items = Array.from(ul.querySelectorAll('li'));
+        if (STATE.focusedIndex >= 0 && items[STATE.focusedIndex]) {
+          const li = items[STATE.focusedIndex];
+          const tabIdStr = li && li.getAttribute('data-tab-id');
+          if (tabIdStr) {
+            e.preventDefault();
+            e.stopPropagation();
+            const tabId = parseInt(tabIdStr, 10);
+            try {
+              const api = (typeof browser !== 'undefined') ? browser : chrome;
+              api.runtime.sendMessage({ type: 'close-tab', tabId }, (resp) => {
+                // Optimistically remove the item from the list
+                try {
+                  li.remove();
+                  const remaining = Array.from(ul.querySelectorAll('li'));
+                  // Update STATE.tabs and STATE.allTabs to reflect removal
+                  STATE.tabs = STATE.tabs.filter(t => t.id !== tabId);
+                  STATE.allTabs = STATE.allTabs.filter(t => t.id !== tabId);
+                  // Adjust focus to a sensible item
+                  if (remaining.length > 0) {
+                    const nextIndex = Math.min(STATE.focusedIndex, remaining.length - 1);
+                    STATE.focusedIndex = -1; // will be set by setFocusedIndex
+                    setFocusedIndex(nextIndex);
+                  } else {
+                    // No items left; show empty message
+                    computeResultsAndRender();
+                  }
+                } catch (_) {}
+              });
+            } catch (_) {}
+          }
+        }
+      }
+    }, true);
+
+    // Load mode and items
+    try {
+      const api = (typeof browser !== 'undefined') ? browser : chrome;
+      api.storage.local.get('mode', (res) => {
+        if (res && res.mode === 'bookmarks') {
+          STATE.mode = 'bookmarks';
+          fetchAllBookmarksAndRender();
+        } else {
+          STATE.mode = 'tabs';
+          fetchAllTabsAndRender();
+        }
+        updateModeUI();
+        api.storage.local.remove('mode');
+      });
+    } catch (_) {
+      updateModeUI();
+      fetchAllTabsAndRender();
+    }
+  }
+
+  // Close the extension window
+  function closeExtensionWindow() {
+    try { window.close(); } catch (_) {}
+  }
+
+  initApp();
+})();
