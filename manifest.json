@@ -1,33 +1,44 @@
 {
-  "manifest_version": 3,
-  "name": "Firefox Tab Search",
-  "version": "1.0",
-  "description": "Search and switch between open tabs quickly, ordered by last visited.",
+  "manifest_version": 2,
+  "name": "FuzzyTabs",
+  "version": "1.3.0",
+  "description": "Fuzzy-search through opened tabs or bookmarks",
+  "icons": {
+    "48": "icons/ic_search.svg"
+  },
+  "browser_action": {
+    "default_title": "FuzzyTabs",
+    "default_icon": "icons/ic_search.svg",
+    "default_popup": "app.html"
+  },
   "permissions": [
     "tabs",
-    "storage",
-    "sessions",
-    "contextualIdentities",
-    "bookmarks"
+    "bookmarks",
+    "storage"
   ],
-  "icons": {
-    "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
-  },
-  "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "Search Tabs"
-  },
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
   },
   "commands": {
-    "_execute_action": {
+    "_execute_browser_action": {
       "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
+        "default": "Ctrl+Shift+Space"
       },
-      "description": "Open tab search"
+      "description": "Open FuzzyTabs"
+    },
+    "open-bookmarks": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B"
+      },
+      "description": "Open FuzzyTabs in bookmarks mode"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{08ed11c3-efeb-4275-8887-5b1fc9dfc183}"
     }
   }
 }
